@@ -24,6 +24,11 @@ from . import api_utils
 from . import get_imdb_id
 
 IMDB_RATINGS_URL = 'https://www.imdb.com/title/{}/'
+IMDB_GRAPHQL_URL = 'https://caching.graphql.imdb.com/'
+IMDB_GRAPHQL_QUERY = (
+    'query TitleRatings($id: ID!) { title(id: $id) { '
+    'ratingsSummary { aggregateRating voteCount topRanking { rank } } } }'
+)
 IMDB_LDJSON_REGEX = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.DOTALL)
 IMDB_TOP250_REGEX = re.compile(r'Top rated movie #(\d+)')
 
@@ -36,6 +41,14 @@ HEADERS = (
     ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'),
     ('Accept', 'application/json'),
 )
+GRAPHQL_HEADERS = (
+    ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36'),
+    ('Accept', 'application/graphql+json, application/json'),
+    ('Content-Type', 'application/json'),
+    ('Origin', 'https://www.imdb.com'),
+    ('Referer', 'https://www.imdb.com/'),
+    ('x-imdb-client-name', 'imdb-web-next'),
+)
 
 def get_details(uniqueids):
     imdb_id = get_imdb_id(uniqueids)
@@ -45,9 +58,54 @@ def get_details(uniqueids):
     return _assemble_imdb_result(votes, rating, top250)
 
 def _get_ratinginfo(imdb_id):
+    votes, rating, top250 = _get_ratinginfo_graphql(imdb_id)
+    if votes is not None or rating is not None or top250 is not None:
+        return votes, rating, top250
+    return _get_ratinginfo_html(imdb_id)
+
+def _get_ratinginfo_graphql(imdb_id):
+    api_utils.set_headers(dict(GRAPHQL_HEADERS))
+    response = api_utils.load_info(
+        IMDB_GRAPHQL_URL,
+        data={'query': IMDB_GRAPHQL_QUERY, 'variables': {'id': imdb_id}},
+        default={},
+    )
+    return _parse_imdb_graphql(response)
+
+def _get_ratinginfo_html(imdb_id):
     api_utils.set_headers(dict(HEADERS))
     response = api_utils.load_info(IMDB_RATINGS_URL.format(imdb_id), default = '', resp_type='text')
     return _parse_imdb_result(response)
+
+def _parse_imdb_graphql(response):
+    try:
+        ratings = ((response or {}).get('data') or {}).get('title') or {}
+        ratings = ratings.get('ratingsSummary') or {}
+    except AttributeError:
+        return None, None, None
+
+    rating = ratings.get('aggregateRating')
+    votes = ratings.get('voteCount')
+    top_ranking = ratings.get('topRanking') or {}
+    try:
+        top250 = top_ranking.get('rank')
+    except AttributeError:
+        top250 = None
+
+    try:
+        rating = float(rating) if rating is not None else None
+    except (TypeError, ValueError):
+        rating = None
+    try:
+        votes = int(votes) if votes is not None else None
+    except (TypeError, ValueError):
+        votes = None
+    try:
+        top250 = int(top250) if top250 is not None else None
+    except (TypeError, ValueError):
+        top250 = None
+
+    return votes, rating, top250
 
 def _assemble_imdb_result(votes, rating, top250):
     result = {}

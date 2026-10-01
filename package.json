@@ -1,0 +1,11 @@
+{
+  "name": "metadata.themoviedb.org.python",
+  "private": true,
+  "description": "Kodi TMDB metadata scraper (Python). Use npm scripts for dev/test; runs inside Kodi in production.",
+  "scripts": {
+    "test": "PYTHONPATH=python python3 -m unittest discover -s test/unittests -p 'test_*.py' -v",
+    "dev": "bash scripts/dev.sh",
+    "launch": "bash scripts/launch-all.sh",
+    "launch:films": "cd /Users/rpm/vitamovies && npm run dev"
+  }
+}

@@ -20,6 +20,7 @@
 from __future__ import absolute_import, unicode_literals
 
 import json
+import time
 
 try:
     import xbmc
@@ -50,7 +51,7 @@ def set_headers(headers):
     HEADERS.update(headers)
 
 
-def load_info(url, params=None, default=None, resp_type = 'json'):
+def load_info(url, params=None, default=None, resp_type = 'json', data=None):
     # type: (Text, Optional[Dict[Text, Union[Text, List[Text]]]]) -> Union[dict, list]
     """
     Load info from external api
@@ -59,6 +60,7 @@ def load_info(url, params=None, default=None, resp_type = 'json'):
     :param params: URL query params
     :default: object to return if there is an error
     :resp_type: what to return to the calling function
+    :data: optional JSON-serializable body; when set the request is POSTed
     :return: API response or default on error
     """
     theerror = ''
@@ -68,7 +70,10 @@ def load_info(url, params=None, default=None, resp_type = 'json'):
         xbmc.log('Calling URL "{}"'.format(url), xbmc.LOGDEBUG)
         if HEADERS:
             xbmc.log(str(HEADERS), xbmc.LOGDEBUG)
-    req = Request(url, headers=HEADERS)
+    body = None
+    if data is not None:
+        body = data if isinstance(data, bytes) else json.dumps(data).encode('utf-8')
+    req = Request(url, data=body, headers=HEADERS)
     try:
         response = urlopen(req)
     except URLError as e:
@@ -86,3 +91,28 @@ def load_info(url, params=None, default=None, resp_type = 'json'):
         resp = response.read().decode('utf-8')
     # xbmc.log('the api response:\n{}'.format(pformat(resp)), xbmc.LOGDEBUG)
     return resp
+
+
+def load_info_with_retry(url, params=None, default=None, resp_type='json', data=None,
+                         max_retries=5, base_delay=1.0):
+    # type: (...) -> Union[dict, list]
+    """
+    Load info with exponential backoff on HTTP 429 and transient 5xx responses.
+    """
+    delay = base_delay
+    last_result = None
+    for attempt in range(max_retries):
+        result = load_info(url, params=params, default=default, resp_type=resp_type, data=data)
+        last_result = result
+        if not isinstance(result, dict) or 'error' not in result:
+            return result
+        message = result.get('error', '')
+        retryable = ('Error code: 429' in message) or ('Error code: 500' in message)
+        if retryable and attempt < max_retries - 1:
+            if xbmc:
+                xbmc.log('Retrying TMDb request after {}s ({})'.format(delay, message), xbmc.LOGDEBUG)
+            time.sleep(delay)
+            delay = min(delay * 2, 30.0)
+            continue
+        return result
+    return last_result

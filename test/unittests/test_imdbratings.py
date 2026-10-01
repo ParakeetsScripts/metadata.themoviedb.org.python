@@ -99,6 +99,46 @@ class TestIMDBRatings(unittest.TestCase):
 
         self.assertDictEqual(expected_output, actual_output)
 
+    def test_parse_imdb_graphql(self):
+        input_model = {
+            'data': {
+                'title': {
+                    'ratingsSummary': {
+                        'aggregateRating': 8.6,
+                        'voteCount': 1590233,
+                        'topRanking': {'rank': 30},
+                    }
+                }
+            }
+        }
+        expected_output = (1590233, 8.6, 30)
+
+        actual_output = imdbratings._parse_imdb_graphql(input_model)
+
+        self.assertEqual(expected_output, actual_output)
+
+    def test_parse_imdb_graphql__no_top250(self):
+        input_model = {
+            'data': {
+                'title': {
+                    'ratingsSummary': {
+                        'aggregateRating': 7.2,
+                        'voteCount': 1234,
+                        'topRanking': None,
+                    }
+                }
+            }
+        }
+        expected_output = (1234, 7.2, None)
+
+        actual_output = imdbratings._parse_imdb_graphql(input_model)
+
+        self.assertEqual(expected_output, actual_output)
+
+    def test_parse_imdb_graphql__empty_return_Nones(self):
+        self.assertEqual((None, None, None), imdbratings._parse_imdb_graphql({}))
+        self.assertEqual((None, None, None), imdbratings._parse_imdb_graphql(None))
+
 @unittest.skipUnless(END_TO_END, "e2e testing not enabled")
 class TestIMDBRatings_E2E(unittest.TestCase):
     def test_e2e__imdb_page_goldenpath_rightnow(self):

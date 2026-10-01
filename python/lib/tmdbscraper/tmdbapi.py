@@ -18,6 +18,7 @@
 
 """Functions to interact with TMDb API."""
 
+import os
 import unicodedata
 from . import api_utils
 try:
@@ -37,13 +38,18 @@ HEADERS = (
     ('Accept', 'application/json'),
 )
 
-TMDB_PARAMS = {'api_key': 'f090bb54758cabf231fb605d3e3e0468'}
+def _default_api_key():
+    return os.environ.get('TMDB_API_KEY', 'f090bb54758cabf231fb605d3e3e0468')
+
+
+TMDB_PARAMS = {'api_key': _default_api_key()}
 BASE_URL = 'https://api.themoviedb.org/3/{}'
 SEARCH_URL = BASE_URL.format('search/movie')
 FIND_URL = BASE_URL.format('find/{}')
 MOVIE_URL = BASE_URL.format('movie/{}')
 COLLECTION_URL = BASE_URL.format('collection/{}')
 CONFIG_URL = BASE_URL.format('configuration')
+TV_EPISODE_URL = BASE_URL.format('tv/{}/season/{}/episode/{}')
 
 def log(message):
     if xbmc:
@@ -121,6 +127,30 @@ def get_collection(collection_id, language=None, append_to_response=None):
     theurl = COLLECTION_URL.format(collection_id)
     api_utils.set_headers(dict(HEADERS))
     return api_utils.load_info(theurl, params=_set_params(append_to_response, language))
+
+
+def get_tv_episode(series_id, season_number, episode_number, language=None, append_to_response=None):
+    # type: (int, int, int, Optional[Text], Optional[Text]) -> InfoType
+    """
+    Get TV episode details.
+
+    GET /tv/{series_id}/season/{season_number}/episode/{episode_number}
+
+    :param series_id: TMDb TV series ID
+    :param season_number: season number within the series
+    :param episode_number: episode number within the season
+    :param language: ISO 639-1 language code (optional, TMDb default en-US)
+    :param append_to_response: comma-separated sub-endpoints (optional, max 20)
+    :return: episode JSON or error dict
+    """
+    log('fetching tv episode series={} season={} episode={}'.format(
+        series_id, season_number, episode_number))
+    theurl = TV_EPISODE_URL.format(series_id, season_number, episode_number)
+    api_utils.set_headers(dict(HEADERS))
+    return api_utils.load_info_with_retry(
+        theurl,
+        params=_set_params(append_to_response, language),
+    )
 
 
 def get_configuration():
